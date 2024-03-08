@@ -33,13 +33,4 @@ public class TftpEncoderDecoder implements MessageEncoderDecoder<byte[]>{
     public byte[] encode(byte[] message) {
         return (message + "\n").getBytes(); //uses utf8 by default
     }
-
-    public short firstTwoBytesToShort(byte[] bytes){
-        // converting 2 byte array to a short
-        if(bytes.length < 2)
-            throw new IllegalArgumentException("byte array must be of length at least 2");
-         
-        
-        return (short) (((short) bytes[0]) << 8 | (short) (bytes[1]) & 0x00ff);
-    }
 }
