@@ -6,19 +6,18 @@ import bgu.spl.net.api.MessageEncoderDecoder;
 import bgu.spl.net.api.MessagingProtocol;
 import bgu.spl.net.srv.BaseServer;
 import bgu.spl.net.srv.BlockingConnectionHandler;
+import bgu.spl.net.srv.Server;
 
 public class TftpServer extends BaseServer<byte[]>{
 
     public TftpServer(int port, Supplier<MessagingProtocol<byte[]>> protocolFactory,
             Supplier<MessageEncoderDecoder<byte[]>> encdecFactory) {
         super(port, protocolFactory, encdecFactory);
-        //TODO Auto-generated constructor stub
+        Server.threadPerClient(port, protocolFactory, encdecFactory).serve();
     }
 
     @Override
     protected void execute(BlockingConnectionHandler<byte[]> handler) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'execute'");
+        new Thread(handler).start();
     }
-    //TODO: Implement this
 }

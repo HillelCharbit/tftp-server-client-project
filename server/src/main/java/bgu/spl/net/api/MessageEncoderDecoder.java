@@ -1,5 +1,7 @@
 package bgu.spl.net.api;
 
+import bgu.spl.net.impl.tftp.Frame;
+
 public interface MessageEncoderDecoder<T> {
 
     /**
@@ -11,12 +13,14 @@ public interface MessageEncoderDecoder<T> {
      */
     T decodeNextByte(byte nextByte);
 
+    Frame decodeNextByteFrame(byte nextByte);
+
     /**
      * encodes the given message to bytes array
      *
      * @param message the message to encode
      * @return the encoded bytes
      */
-    byte[] encode(T message);
+    byte[] encode(Frame message);
 
 }
