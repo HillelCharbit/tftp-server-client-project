@@ -23,7 +23,6 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
     private ArrayList<byte[]> dataBlocksReceived;
     private short lastBlockNumSent;
     private Path currentFile;
-    private String username;
 
     private TftpProtocolUtil util = new TftpProtocolUtil();
  
@@ -32,7 +31,6 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         this.connectionId = connectionId;
         this.connections = connections;
         dataBlocksToSend = new LinkedBlockingDeque<>();
-        username = "";
     }   
 
     @Override
@@ -40,6 +38,12 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         if(frame == null || frame.getCommand() == null ) {
             ERROR error = new ERROR((short) 4, "Illegal TFTP operation - Unknown Opcode");
             connections.send(connectionId, error);
+        }
+
+        if (!isLoggedIn() && frame.getCommand() != Frame.CommandTypes.LOGRQ) {
+            ERROR error = new ERROR((short) 6, "User not logged in");
+            connections.send(connectionId, error);
+            return;
         }
       
         switch (frame.getCommand()) {
@@ -86,7 +90,8 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
     }
 
     private void RRQprocess(String fileName) {
-        if(isLoggedIn()) {
+        try {
+            SharedResources.semaphore.acquire();
             if(util.isFileExists(fileName)) {
                 File file = util.getPath(fileName).toFile();
                 try (FileInputStream fileInputStream = new FileInputStream(file)) {
@@ -109,33 +114,15 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
                 connections.send(connectionId, error);
             }
         }
+        catch (Exception e) {
+            ERROR error = new ERROR((short) 2, "Access violation - File cannot be read");
+            connections.send(connectionId, error);
+        }
+        finally {
+            SharedResources.semaphore.release();
+        }
     }
 
-    // private void RRQprocess(String fileName) {
-    //     if(isLoggedIn()) {
-    //         if(util.isFileExists(fileName)) {
-    //             File file = util.getPath(fileName).toFile();
-    //             try (FileInputStream fileInputStream = new FileInputStream(file)) {
-    //                 byte[] data = new byte[512];
-    //                 int bytesRead;
-    //                 short blockNum = 1;
-    //                 while ((bytesRead = fileInputStream.read(data)) != -1) {
-    //                     sendDATA(blockNum, data,(short) bytesRead);
-    //                     lastBlockNumSent = blockNum;
-    //                     // sleep until ack
-    //                     this.wait();
-    //                     blockNum++;
-    //                 }
-    //             } catch (Exception e) {
-    //                 ERROR error = new ERROR((short) 2, "Access violation - File cannot be written, read or deleted");
-    //                 connections.send(connectionId, error);
-    //             }
-    //         } else {
-    //             ERROR error = new ERROR((short) 1, "File not found - RRQ DELRQ of non-existing file.");
-    //             connections.send(connectionId, error);
-    //         }
-    //     }
-    // }
 
     private void ACKprocess(ACK ackFrame) {
         if(ackFrame.getBlockNumber() == lastBlockNumSent) {
@@ -158,11 +145,13 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         
     
     private void WRQprocess(String fileName) {
-        if(isLoggedIn()){
+        try {
+            SharedResources.semaphore.acquire();
             if(util.isFileExists(fileName)) {
                 ERROR error = new ERROR((short) 5, "File already exists");
                 connections.send(connectionId, error);
-            } else {
+            } 
+            else {
                 if (currentFile != null) { // already in the middle of a file transfer
                     // send error
                     ERROR error = new ERROR((short) 2, "Access violation - File cannot be written");
@@ -181,7 +170,13 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
                 }
             }
         }
-
+        catch (Exception e) {
+            ERROR error = new ERROR((short) 2, "Access violation - File cannot be written");
+            connections.send(connectionId, error);
+        }
+        finally {
+            SharedResources.semaphore.release();
+        }
     }
 
     private void sendDATA(short blockNum, byte[] data, short packetSize) {
@@ -230,118 +225,114 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
     }
     
     private void DIRQprocess() {
-        if(isLoggedIn()) {
-            try {
-                // create a list of all file names in the directory
-                File dir = new File(util.getDirPath());
-                File[] files = dir.listFiles();
-                String[] fileNames = new String[files.length];
-                for (int i = 0; i < files.length; i++) {
-                    if (files[i].isFile()){
-                        fileNames[i] = files[i].getName();
-                    }
+        try {
+            SharedResources.semaphore.acquire();
+            // create a list of all file names in the directory
+            File dir = new File(util.getDirPath());
+            File[] files = dir.listFiles();
+            String[] fileNames = new String[files.length];
+            for (int i = 0; i < files.length; i++) {
+                if (files[i].isFile()){
+                    fileNames[i] = files[i].getName();
                 }
-                // create a list of bytes, divide the file names with 0 byte at the end of each name
-                byte[] dirBytes = new byte[0];
-                for (String fileName : fileNames) {
-                    byte[] fileNameBytes = fileName.getBytes();
-                    byte[] newDirBytes = new byte[dirBytes.length + fileNameBytes.length + 1];
-                    System.arraycopy(dirBytes, 0, newDirBytes, 0, dirBytes.length);
-                    System.arraycopy(fileNameBytes, 0, newDirBytes, dirBytes.length, fileNameBytes.length);
-                    newDirBytes[dirBytes.length + fileNameBytes.length] = 0;
-                    dirBytes = newDirBytes;
-                }
-                // add DATA packets
-                short blockNum = 1;
-                int index = 0;
-                while (index < dirBytes.length) {
-                    byte[] data = new byte[512];
-                    for (int i = 0; i < 512 && index < dirBytes.length; i++) {
-                        data[i] = dirBytes[index];
-                        index++;
-                    }
-                    if (index < 512){
-                        byte[] dataToSend = new byte[index-1];
-                        System.arraycopy(data, 0, dataToSend, 0, index-1);
-                        data = dataToSend;
-                    }
-                    dataBlocksToSend.add(data);
-                    blockNum++;
-                }
-                sendDATA((short)1, dataBlocksToSend.peek(), (short) dataBlocksToSend.peek().length);
             }
-            catch (Exception e) {
-                ERROR error = new ERROR((short) 2, "Access violation - File cannot be read");
-                connections.send(connectionId, error);
+            // create a list of bytes, divide the file names with 0 byte at the end of each name
+            byte[] dirBytes = new byte[0];
+            for (String fileName : fileNames) {
+                byte[] fileNameBytes = fileName.getBytes();
+                byte[] newDirBytes = new byte[dirBytes.length + fileNameBytes.length + 1];
+                System.arraycopy(dirBytes, 0, newDirBytes, 0, dirBytes.length);
+                System.arraycopy(fileNameBytes, 0, newDirBytes, dirBytes.length, fileNameBytes.length);
+                newDirBytes[dirBytes.length + fileNameBytes.length] = 0;
+                dirBytes = newDirBytes;
             }
-        } else {
-            // send error
-            ERROR error = new ERROR((short) 6, "User not logged in");
+            // add DATA packets
+            short blockNum = 1;
+            int index = 0;
+            while (index < dirBytes.length) {
+                byte[] data = new byte[512];
+                for (int i = 0; i < 512 && index < dirBytes.length; i++) {
+                    data[i] = dirBytes[index];
+                    index++;
+                }
+                if (index < 512){
+                    byte[] dataToSend = new byte[index-1];
+                    System.arraycopy(data, 0, dataToSend, 0, index-1);
+                    data = dataToSend;
+                }
+                dataBlocksToSend.add(data);
+                blockNum++;
+            }
+            sendDATA((short)1, dataBlocksToSend.peek(), (short) dataBlocksToSend.peek().length);
+        }
+        catch (Exception e) {
+            ERROR error = new ERROR((short) 2, "Access violation - File cannot be read");
             connections.send(connectionId, error);
+        }
+        finally {
+            SharedResources.semaphore.release();
         }
     }
     
     private void LOGRQprocess(String userName) {
-        if(isLoggedIn()) {
-            // send error
-            ERROR error = new ERROR((short) 7, "User already logged in");
-            connections.send(connectionId, error);
-        }
-        else {
-            connections.loginUser(connectionId, userName);
-            ACK ack = new ACK((short) 0);
-            connections.send(connectionId, ack);
-        }
+        SharedResources.LoggedConnectionIdToUsername.put(connectionId, userName);
+        ACK ack = new ACK((short) 0);
+        connections.send(connectionId, ack);
     }
     
     private void DELRQprocess(String fileName) {
-        if(util.isFileExists(fileName)) {
-            Path path = util.getPath(fileName);
-            try {
-                Files.delete(path);
-                // send ack
-                ACK ack = new ACK((short) 0);
-                connections.send(connectionId, ack);
-                // send BCAST
-                sendBCAST(false, fileName);
-            } catch (Exception e) {
-                ERROR error = new ERROR((short) 2, "Access violation - File cannot be deleted");
+        try{
+            SharedResources.semaphore.acquire();
+            if(util.isFileExists(fileName)) {
+                Path path = util.getPath(fileName);
+                try {
+                    Files.delete(path);
+                    // send ack
+                    ACK ack = new ACK((short) 0);
+                    connections.send(connectionId, ack);
+                    // send BCAST
+                    sendBCAST(false, fileName);
+                } catch (Exception e) {
+                    ERROR error = new ERROR((short) 2, "Access violation - File cannot be deleted");
+                    connections.send(connectionId, error);
+                }
+            } else {
+                // send error
+                ERROR error = new ERROR((short) 1, "File not found - DELRQ of non-existing file.");
                 connections.send(connectionId, error);
             }
-        } else {
-            // send error
-            ERROR error = new ERROR((short) 1, "File not found - DELRQ of non-existing file.");
+        }
+        catch (Exception e) {
+            ERROR error = new ERROR((short) 2, "Access violation - File cannot be deleted");
             connections.send(connectionId, error);
+        }
+        finally {
+            SharedResources.semaphore.release();
         }
     }
     
     private void sendBCAST(boolean isAdd, String fileName) {
         // send BCAST to all logged in clients
         BCAST bcast = new BCAST(isAdd, fileName);
-        for (int connectionId : connections.getConnections().keySet()) {
-            if (connections.isLoggedIn(connectionId)) {
-                connections.send(connectionId, bcast);
-            }
+        for (int loggedConnectionId : SharedResources.LoggedConnectionIdToUsername.keySet()) {
+            {
+                connections.send(loggedConnectionId, bcast);
+            } 
         }
 
     }
     
     private void DISCprocess() {
-        if(isLoggedIn()) {
-            // send ack
-            ACK ack = new ACK((short) 0);
-            connections.send(connectionId, ack);
-            // disconnect
-            connections.disconnect(connectionId);
-            shouldTerminate = true;
-        } else {
-            // send error
-            ERROR error = new ERROR((short) 6, "User not logged in");
-            connections.send(connectionId, error);
-        }
+        SharedResources.LoggedConnectionIdToUsername.remove(connectionId);
+        // send ack
+        ACK ack = new ACK((short) 0);
+        connections.send(connectionId, ack);
+        // disconnect
+        connections.disconnect(connectionId);
+        shouldTerminate = true;
     }
     
     private boolean isLoggedIn() {
-        return connections.isLoggedIn(connectionId);
+        return SharedResources.LoggedConnectionIdToUsername.containsKey(connectionId);
     }
 }
