@@ -5,8 +5,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Queue;
+import java.util.concurrent.LinkedBlockingDeque;
 
 import bgu.spl.net.api.BidiMessagingProtocol;
 import bgu.spl.net.impl.tftp.Frames.*;
@@ -18,20 +19,18 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
     private boolean shouldTerminate = false;
     private int connectionId;
     private Connections<Frame> connections;
-    private ArrayList<byte[]> dataBlocks;
+    private Queue<byte[]> dataBlocksToSend;
+    private ArrayList<byte[]> dataBlocksReceived;
     private short lastBlockNumSent;
-
-
+    private Path currentFile;
 
     private TftpProtocolUtil util = new TftpProtocolUtil();
  
-    private final int opCodeLen = 2;
-
-
     @Override
     public void start(int connectionId, Connections<Frame> connections) {
         this.connectionId = connectionId;
         this.connections = connections;
+        dataBlocksToSend = new LinkedBlockingDeque<>();
     }   
 
     @Override
@@ -45,25 +44,37 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
             case RRQ:
                 RRQ RRQframe = (RRQ) frame;
                 RRQprocess(RRQframe.getFileName());
+                break;
             case WRQ:
                 WRQ WRQframe = (WRQ) frame;
                 WRQprocess(WRQframe.getFileName());
+                break;
             case DATA:
                 DATA DATAframe = (DATA) frame;
                 DATAprocess(DATAframe);
+                break;
             case DELRQ:
                 DELRQ DELRQframe = (DELRQ) frame;
                 DELRQprocess(DELRQframe.getFileName());
-            // case LOGRQ:
-            //     LOGRQ LOGRQframe = (LOGRQ) frame;
-            //     LOGRQprocess(LOGRQframe.getUserName());
-            // case DIRQ:
-            //     DIRQprocess();
-            // case DISC:
-            //     DISCprocess();
+                break;
+            case LOGRQ:
+                LOGRQ LOGRQframe = (LOGRQ) frame;
+                LOGRQprocess(LOGRQframe.getUserName());
+                break;
+            case DIRQ:
+                DIRQprocess();
+                break;
+            case DISC:
+                DISCprocess();
+                break;
             case ACK:
                 ACK ACKframe = (ACK) frame;
                 ACKprocess(ACKframe);
+                break;
+            case BCAST:
+                // do nothing
+            case ERROR:
+                // do nothing
         }
     }
 
@@ -79,14 +90,14 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
                 try (FileInputStream fileInputStream = new FileInputStream(file)) {
                     byte[] data = new byte[512];
                     int bytesRead;
-                    short blockNum = 1;
                     while ((bytesRead = fileInputStream.read(data)) != -1) {
-                        sendDATA(blockNum, data);
-                        lastBlockNumSent = blockNum;
-                        // sleep until ack
-                        this.wait();
-                        blockNum++;
+                        byte[] dataToSend = new byte[bytesRead];
+                        System.arraycopy(data, 0, dataToSend, 0, bytesRead);
+                        dataBlocksToSend.add(dataToSend);
                     }
+                    // send first data block
+                    byte[] firstDataBlock = dataBlocksToSend.peek();
+                    sendDATA((short) 1, firstDataBlock, (short) firstDataBlock.length);
                 } catch (Exception e) {
                     ERROR error = new ERROR((short) 2, "Access violation - File cannot be written, read or deleted");
                     connections.send(connectionId, error);
@@ -98,16 +109,49 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         }
     }
 
+    // private void RRQprocess(String fileName) {
+    //     if(isLoggedIn()) {
+    //         if(util.isFileExists(fileName)) {
+    //             File file = util.getPath(fileName).toFile();
+    //             try (FileInputStream fileInputStream = new FileInputStream(file)) {
+    //                 byte[] data = new byte[512];
+    //                 int bytesRead;
+    //                 short blockNum = 1;
+    //                 while ((bytesRead = fileInputStream.read(data)) != -1) {
+    //                     sendDATA(blockNum, data,(short) bytesRead);
+    //                     lastBlockNumSent = blockNum;
+    //                     // sleep until ack
+    //                     this.wait();
+    //                     blockNum++;
+    //                 }
+    //             } catch (Exception e) {
+    //                 ERROR error = new ERROR((short) 2, "Access violation - File cannot be written, read or deleted");
+    //                 connections.send(connectionId, error);
+    //             }
+    //         } else {
+    //             ERROR error = new ERROR((short) 1, "File not found - RRQ DELRQ of non-existing file.");
+    //             connections.send(connectionId, error);
+    //         }
+    //     }
+    // }
+
     private void ACKprocess(ACK ackFrame) {
-        short blockNum = ackFrame.getBlockNumber();
-        if(blockNum == lastBlockNumSent) {
-            // notify
-            this.notifyAll();
-        } else {
+        if(ackFrame.getBlockNumber() == lastBlockNumSent) {
+            System.out.println("ACK " + ackFrame.getBlockNumber());
+            dataBlocksToSend.remove();
+            if(!dataBlocksToSend.isEmpty()) {
+                byte[] nextDataBlock = dataBlocksToSend.peek();
+                sendDATA((short) (lastBlockNumSent + 1), nextDataBlock, (short) nextDataBlock.length);
+            }
+        }
+        else {
             // send error
             ERROR error = new ERROR((short) 0, "wrong block number in ACK frame");
             connections.send(connectionId, error);
         }
+
+                
+                
     }
         
     
@@ -117,44 +161,65 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
                 ERROR error = new ERROR((short) 5, "File already exists");
                 connections.send(connectionId, error);
             } else {
-                // send ack
-                ACK ack = new ACK((short) 0);
-                connections.send(connectionId, ack);
-                dataBlocks = new ArrayList<>();
+                if (currentFile != null) { // already in the middle of a file transfer
+                    // send error
+                    ERROR error = new ERROR((short) 2, "Access violation - File cannot be written");
+                    connections.send(connectionId, error);
+                }
+                //create file
+                try {
+                    currentFile = Files.createFile(util.getPath(fileName));
+                    dataBlocksReceived = new ArrayList<>();
+                    // send ack
+                    ACK ack = new ACK((short) 0);
+                    connections.send(connectionId, ack);
+                } catch (Exception e) {
+                    ERROR error = new ERROR((short) 2, "Access violation - File cannot be written");
+                    connections.send(connectionId, error);
+                }
             }
         }
+
     }
 
-    private void sendDATA(short blockNum, byte[] data) {
-        Frame dataFrame = new DATA(blockNum, data);
+    private void sendDATA(short blockNum, byte[] data, short packetSize) {
+        Frame dataFrame = new DATA(blockNum, data, packetSize);
+        lastBlockNumSent = blockNum;
         connections.send(connectionId, dataFrame);
     }
 
     private void DATAprocess(DATA dataFrame) {
-        short blockNum = dataFrame.getBlockNumber();
-        byte[] data = dataFrame.getData();
-        if(blockNum == dataBlocks.size() + 1) {
-            dataBlocks.add(data);
+        
+        // send ack
+        ACK ack = new ACK(dataFrame.getBlockNumber());
+        connections.send(connectionId, ack);
+
+        if(dataFrame.getBlockNumber() == (short)(dataBlocksReceived.size() + 1)) {
+            dataBlocksReceived.add(dataFrame.getData());
             // if last block
-            if(data.length < 512) {
-                // write to file
-                byte[] fileData = new byte[dataBlocks.size() * 512];
-                for(int i = 0; i < dataBlocks.size(); i++) {
-                    for(int j = 0; j < 512; j++) {
-                        fileData[i * 512 + j] = dataBlocks.get(i)[j];
-                    }
+            if(dataFrame.getPacketSize() < 512) {
+                int totalSize = 0;
+                for (byte[] dataBlock : dataBlocksReceived) {
+                    totalSize += dataBlock.length;
                 }
-                try (FileOutputStream fileOutputStream = new FileOutputStream(util.getPath("fileName").toFile())) {
+                // write to file
+                byte[] fileData = new byte[totalSize];
+                int index = 0;
+                for (byte[] dataBlock : dataBlocksReceived) {
+                    System.arraycopy(dataBlock, 0, fileData, index, dataBlock.length);
+                    index += dataBlock.length;
+                }
+                
+                try (FileOutputStream fileOutputStream = new FileOutputStream(currentFile.toFile())) {
                     fileOutputStream.write(fileData);
                 } catch (Exception e) {
                     ERROR error = new ERROR((short) 2, "Access violation - File cannot be written");
                     connections.send(connectionId, error);
                 }
                 // send BCAST
+                sendBCAST(true, currentFile.getFileName().toString());
+                currentFile = null;
             }
-            // send ack
-            ACK ack = new ACK(blockNum);
-            connections.send(connectionId, ack);
         } else {
             // send error
             ERROR error = new ERROR((short) 0, "wrong block number in DATA frame");
@@ -162,56 +227,70 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         }
     }
     
-    // private void ACKprocess(byte[] message) {
-    //     int index = opCodeLen;
-
-    //     blockNum = util.TwoBytesToShort(message[index], message[++index]);
-
-    //     String ACKmsg = "ACK " + blockNum + " received";
-    //     byte[] ACKmsgInBytes = ACKmsg.getBytes();
-
-    //     connections.send(connectionId, ACKmsgInBytes);
-    // }
+    private void DIRQprocess() {
+        if(isLoggedIn()) {
+            try {
+                // create a list of all file names in the directory
+                File dir = new File(util.getDirPath());
+                File[] files = dir.listFiles();
+                String[] fileNames = new String[files.length];
+                for (int i = 0; i < files.length; i++) {
+                    if (files[i].isFile()){
+                        fileNames[i] = files[i].getName();
+                    }
+                }
+                // create a list of bytes, divide the file names with 0 byte at the end of each name
+                byte[] dirBytes = new byte[0];
+                for (String fileName : fileNames) {
+                    byte[] fileNameBytes = fileName.getBytes();
+                    byte[] newDirBytes = new byte[dirBytes.length + fileNameBytes.length + 1];
+                    System.arraycopy(dirBytes, 0, newDirBytes, 0, dirBytes.length);
+                    System.arraycopy(fileNameBytes, 0, newDirBytes, dirBytes.length, fileNameBytes.length);
+                    newDirBytes[dirBytes.length + fileNameBytes.length] = 0;
+                    dirBytes = newDirBytes;
+                }
+                // add DATA packets
+                short blockNum = 1;
+                int index = 0;
+                while (index < dirBytes.length) {
+                    byte[] data = new byte[512];
+                    for (int i = 0; i < 512 && index < dirBytes.length; i++) {
+                        data[i] = dirBytes[index];
+                        index++;
+                    }
+                    if (index < 512){
+                        byte[] dataToSend = new byte[index-1];
+                        System.arraycopy(data, 0, dataToSend, 0, index-1);
+                        data = dataToSend;
+                    }
+                    dataBlocksToSend.add(data);
+                    blockNum++;
+                }
+                sendDATA((short)1, dataBlocksToSend.peek(), (short) dataBlocksToSend.peek().length);
+            }
+            catch (Exception e) {
+                ERROR error = new ERROR((short) 2, "Access violation - File cannot be read");
+                connections.send(connectionId, error);
+            }
+        } else {
+            // send error
+            ERROR error = new ERROR((short) 6, "User not logged in");
+            connections.send(connectionId, error);
+        }
+    }
     
-    // private void ERRORprocess(byte[] message) {
-    //     int index = opCodeLen;
-    //     short errorCode = util.TwoBytesToShort(message[index], message[++index]);
-
-    //     index++;
-    //     byte[] errorMsgBytes = new byte[message.length - index];
-        
-    //     for (int i = index; i < errorMsgBytes.length; i++) {
-    //         errorMsgBytes[i - index] = message[i];
-    //     }
-        
-
-    //     errorMsg = "Error " + errorCode + ": " + new String(errorMsgBytes);
-    //     connections.send(connectionId, errorMsg.getBytes());
-    // }
-    
-    // private void DIRQprocess() {
-    //     if(isLoggedIn()) {
-    //         // send all files in the directory
-    //         // for(String file: files) {
-    //         //     byte[] fileNameBytes = file.getBytes();
-    //         //     connections.send(connectionId, message);
-    //         // }
-    //     } else {
-    //         // send error
-    //     }
-    // }
-    
-    // private void LOGRQprocess(String userName) {
-    //     if(isLoggedIn()) {
-    //         // send error
-    //     }
-    //     else {
-    //         // log in
-
-    //         // send ack
-    //     }
-
-    // }
+    private void LOGRQprocess(String userName) {
+        if(isLoggedIn()) {
+            // send error
+            ERROR error = new ERROR((short) 7, "User already logged in");
+            connections.send(connectionId, error);
+        }
+        else {
+            connections.loginUser(connectionId, userName);
+            ACK ack = new ACK((short) 0);
+            connections.send(connectionId, ack);
+        }
+    }
     
     private void DELRQprocess(String fileName) {
         if(util.isFileExists(fileName)) {
@@ -222,7 +301,7 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
                 ACK ack = new ACK((short) 0);
                 connections.send(connectionId, ack);
                 // send BCAST
-
+                sendBCAST(false, fileName);
             } catch (Exception e) {
                 ERROR error = new ERROR((short) 2, "Access violation - File cannot be deleted");
                 connections.send(connectionId, error);
@@ -230,42 +309,37 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         } else {
             // send error
             ERROR error = new ERROR((short) 1, "File not found - DELRQ of non-existing file.");
+            connections.send(connectionId, error);
         }
     }
     
-    // private void BCASTprocess(byte[] message) {
-    //     int index = opCodeLen;
-    //     boolean delOrAdd = message[index] == 0 ? false : true;
-    //     index++;
-    //     byte[] fileNameBytes = new byte[message.length - index];
-    //     for (int i = index; i < message.length; i++) {
-    //         fileNameBytes[i - index] = message[i];
-    //     }
-    //     fileName = new String(fileNameBytes);
-        
-    //     String BCASTmsg = delOrAdd ? "File " + fileName + " added" : "File " + fileName + " deleted";
-
-    //     byte[] BCASTmsgBytes = BCASTmsg.getBytes(); 
-    //     for(int ClientID: loggedClients){
-    //         connections.send(ClientID, BCASTmsgBytes);
-    //     }
-    // }
-    
-    private void DISCprocess() {
-        connections.disconnect(connectionId);
-    }
-    
-
-    private boolean isLoggedIn() {
-        for(int loggedClient: loggedClients){
-            if(loggedClient == connectionId){
-                return true;
+    private void sendBCAST(boolean isAdd, String fileName) {
+        // send BCAST to all logged in clients
+        BCAST bcast = new BCAST(isAdd, fileName);
+        for (int connectionId : connections.getConnections().keySet()) {
+            if (connections.isLoggedIn(connectionId)) {
+                connections.send(connectionId, bcast);
             }
         }
-        return false;
+
     }
-
-
-
     
+    private void DISCprocess() {
+        if(isLoggedIn()) {
+            // send ack
+            ACK ack = new ACK((short) 0);
+            connections.send(connectionId, ack);
+            // disconnect
+            connections.disconnect(connectionId);
+            shouldTerminate = true;
+        } else {
+            // send error
+            ERROR error = new ERROR((short) 6, "User not logged in");
+            connections.send(connectionId, error);
+        }
+    }
+    
+    private boolean isLoggedIn() {
+        return connections.isLoggedIn(connectionId);
+    }
 }

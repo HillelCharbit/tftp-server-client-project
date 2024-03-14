@@ -31,10 +31,11 @@ public class ERROR extends Frame{
         byte[] opCodeBytes = ShortToTwoBytes(opCode);
         byte[] errorCodeBytes = ShortToTwoBytes(errorCode);
         byte[] errorMsgBytes = errorMsg.getBytes();
-        byte[] result = new byte[errorMsgBytes.length + 4];
+        byte[] result = new byte[errorMsgBytes.length + 5];
         System.arraycopy(opCodeBytes, 0, result, 0, 2);
         System.arraycopy(errorCodeBytes, 0, result, 2, 2);
         System.arraycopy(errorMsgBytes, 0, result, 4, errorMsgBytes.length);
+        result[result.length - 1] = 0;
         return result;
     }    
 }

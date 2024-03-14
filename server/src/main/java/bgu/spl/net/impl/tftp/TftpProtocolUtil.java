@@ -24,6 +24,10 @@ public class TftpProtocolUtil {
         return Paths.get(System.getProperty("user.dir") + "/Files/" + fileName);
     }
 
+    public String getDirPath() {
+        return System.getProperty("user.dir") + "/Files/";
+    }
+
     public boolean isFileExists(Path path) {
         return path.toFile().exists();
     }

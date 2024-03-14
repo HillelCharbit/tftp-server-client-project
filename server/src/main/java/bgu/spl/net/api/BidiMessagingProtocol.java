@@ -1,5 +1,6 @@
 package bgu.spl.net.api;
 
+import bgu.spl.net.impl.tftp.Frame;
 import bgu.spl.net.srv.Connections;
 
 public interface BidiMessagingProtocol<T>  {
@@ -8,7 +9,7 @@ public interface BidiMessagingProtocol<T>  {
 	**/
     void start(int connectionId, Connections<T> connections);
     
-    void process(T message);
+    void process(Frame message);
 	
 	/**
      * @return true if the connection should be terminated

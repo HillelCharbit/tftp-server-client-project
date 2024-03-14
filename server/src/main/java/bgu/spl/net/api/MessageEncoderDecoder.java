@@ -11,7 +11,6 @@ public interface MessageEncoderDecoder<T> {
      * message
      * @return a message if this byte completes one or null if it doesnt.
      */
-    T decodeNextByte(byte nextByte);
 
     Frame decodeNextByteFrame(byte nextByte);
 
@@ -21,6 +20,6 @@ public interface MessageEncoderDecoder<T> {
      * @param message the message to encode
      * @return the encoded bytes
      */
-    byte[] encode(Frame message);
+    byte[] encode(T message);
 
 }

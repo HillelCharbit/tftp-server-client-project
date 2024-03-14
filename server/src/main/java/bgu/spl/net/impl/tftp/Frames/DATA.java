@@ -9,18 +9,18 @@ public class DATA extends Frame {
     private short blockNumber;
     private byte[] data;
 
-    public DATA(short blockNumber, byte[] data) {
+    public DATA(short blockNumber, byte[] data, short packetSize) {
         super(Frame.CommandTypes.DATA);
         this.blockNumber = blockNumber;
         this.data = data;
-        this.packetSize = (short) data.length;
+        this.packetSize = packetSize;
     }
 
     public DATA(byte[] bytes) {
         super(Frame.CommandTypes.DATA);
         packetSize = TwoBytesToShort(bytes[2], bytes[3]);
         blockNumber = TwoBytesToShort(bytes[4], bytes[5]);
-        data = new byte[packetSize];
+        data = new byte[packetSize];            
         System.arraycopy(bytes, 6, data, 0, packetSize);
     }
     
@@ -30,6 +30,10 @@ public class DATA extends Frame {
 
     public short getBlockNumber() {
         return blockNumber;
+    }
+
+    public short getPacketSize() {
+        return packetSize;
     }
 
     public byte[] toBytes() {

@@ -23,10 +23,11 @@ public class BCAST extends Frame {
         byte[] opCodeBytes = ShortToTwoBytes(opCode);
         byte addedByte = (byte) (added ? 1 : 0);
         byte[] fileNameBytes = fileName.getBytes();
-        byte[] result = new byte[fileNameBytes.length + 4];
+        byte[] result = new byte[fileNameBytes.length + 5];
         System.arraycopy(opCodeBytes, 0, result, 0, 2);
         result[2] = addedByte;
         System.arraycopy(fileNameBytes, 0, result, 3, fileNameBytes.length);
+        result[result.length - 1] = 0;
         return result;
     }
 }

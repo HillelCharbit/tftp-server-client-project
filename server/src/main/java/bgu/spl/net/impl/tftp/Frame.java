@@ -13,7 +13,6 @@ public abstract class Frame {
         DATA,
         ERROR,
         BCAST,
-        DELERQ
     }
 
     private CommandTypes command;
