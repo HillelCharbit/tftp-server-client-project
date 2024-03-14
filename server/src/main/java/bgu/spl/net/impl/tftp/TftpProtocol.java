@@ -23,6 +23,7 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
     private ArrayList<byte[]> dataBlocksReceived;
     private short lastBlockNumSent;
     private Path currentFile;
+    private String username;
 
     private TftpProtocolUtil util = new TftpProtocolUtil();
  
@@ -31,6 +32,7 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         this.connectionId = connectionId;
         this.connections = connections;
         dataBlocksToSend = new LinkedBlockingDeque<>();
+        username = "";
     }   
 
     @Override

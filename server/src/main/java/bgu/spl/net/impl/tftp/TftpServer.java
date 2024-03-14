@@ -21,9 +21,14 @@ public class TftpServer extends BaseServer<Frame>{
         //     System.err.println("Usage: TftpServer <port>");
         //     System.exit(1);
         // }
-        int port = 7777;
-        TftpServer server = new TftpServer(port, TftpProtocol::new, TftpEncoderDecoder::new);
-        server.serve();
+        try {
+            int port = 7777;
+            TftpServer server = new TftpServer(port, TftpProtocol::new, TftpEncoderDecoder::new);
+            server.serve();
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
 

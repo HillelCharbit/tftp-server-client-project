@@ -1,9 +1,6 @@
-package bgu.spl.net.impl.tftp;
+package bgu.spl.net.srv;
 
 import java.util.concurrent.ConcurrentHashMap;
-
-import bgu.spl.net.srv.ConnectionHandler;
-import bgu.spl.net.srv.Connections;
 
 public class ConnectionsImpl<T> implements Connections<T> {
     
@@ -36,24 +33,5 @@ public class ConnectionsImpl<T> implements Connections<T> {
         }
         connections.remove(connectionId);
     }
-
-    public ConcurrentHashMap<Integer, ConnectionHandler<T>> getConnections() {
-        return connections;
-    }
-
-
-    public boolean isLoggedIn(int connectionId) {
-        if (connections.containsKey(connectionId)) {
-            return connections.get(connectionId).isLoggedIn();
-        }
-        return false;
-    }
-
-    public void loginUser(int connectionId, String username) {
-        if (connections.containsKey(connectionId)) {
-            connections.get(connectionId).login(username);
-        }
-    }
- 
     
 }

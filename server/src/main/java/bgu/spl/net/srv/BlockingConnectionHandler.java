@@ -2,8 +2,6 @@ package bgu.spl.net.srv;
 
 import bgu.spl.net.api.BidiMessagingProtocol;
 import bgu.spl.net.api.MessageEncoderDecoder;
-import bgu.spl.net.impl.tftp.ConnectionsImpl;
-import bgu.spl.net.impl.tftp.Frame;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -18,13 +16,16 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
     private BufferedInputStream in;
     private BufferedOutputStream out;
     private volatile boolean connected = true;
-    private String username;
+    private Connections<T> connections;
+    private int id;
 
-    public BlockingConnectionHandler(Socket sock, MessageEncoderDecoder<T> reader, BidiMessagingProtocol<T> protocol) {
+
+    public BlockingConnectionHandler(Socket sock, MessageEncoderDecoder<T> reader, BidiMessagingProtocol<T> protocol, int id, Connections<T> connections) {
         this.sock = sock;
         this.encdec = reader;
         this.protocol = protocol;
-        username = "";
+        this.connections = connections;
+        this.id = id;
     }
 
     @Override
@@ -34,9 +35,12 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
 
             in = new BufferedInputStream(sock.getInputStream());
             out = new BufferedOutputStream(sock.getOutputStream());
+            
+            protocol.start(id, connections);
+            connections.connect(id, this);
 
             while (!protocol.shouldTerminate() && connected && (read = in.read()) >= 0) {
-                Frame nextMessage = encdec.decodeNextByteFrame((byte) read);
+                T nextMessage = encdec.decodeNextByteFrame((byte) read);
                 if (nextMessage != null) {
                     protocol.process(nextMessage);
                 }
@@ -62,17 +66,5 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    public boolean isLoggedIn() {
-        return !username.isEmpty();
-    }
-
-    public void login(String username) {
-        this.username = username;
-    }
-
-    public void initialize(ConnectionsImpl<T> connections, int connectionId) {
-        protocol.start(connectionId, connections);
     }
 }

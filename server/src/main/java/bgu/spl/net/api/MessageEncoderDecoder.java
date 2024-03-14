@@ -1,6 +1,5 @@
 package bgu.spl.net.api;
 
-import bgu.spl.net.impl.tftp.Frame;
 
 public interface MessageEncoderDecoder<T> {
 
@@ -12,7 +11,7 @@ public interface MessageEncoderDecoder<T> {
      * @return a message if this byte completes one or null if it doesnt.
      */
 
-    Frame decodeNextByteFrame(byte nextByte);
+    T decodeNextByteFrame(byte nextByte);
 
     /**
      * encodes the given message to bytes array
