@@ -2,6 +2,7 @@ package bgu.spl.net.impl.tftp;
 
 import java.util.Arrays;
 import bgu.spl.net.api.MessageEncoderDecoder;
+import bgu.spl.net.impl.tftp.Frames.*;
 
 public class TftpEncoderDecoder implements MessageEncoderDecoder<Frame>{
 
@@ -11,7 +12,7 @@ public class TftpEncoderDecoder implements MessageEncoderDecoder<Frame>{
     boolean completed = false;
     private int expectedLength = 0;
 
-    public byte[] decodeNextByte(byte nextByte) {
+    private byte[] decodeNextByte(byte nextByte) {
         //notice that the top 128 ascii characters have the same representation as their utf-8 counterparts
         //this allow us to do the following comparison
         if (command == null) { // still didn't get the opCode
@@ -38,38 +39,6 @@ public class TftpEncoderDecoder implements MessageEncoderDecoder<Frame>{
                         return result;
                     }
                     break;
-                case RRQ:
-                    completed = pushByteUntilZero(nextByte);
-                    if (completed) {
-                        byte[] result = extractResult();
-                        reset();
-                        return result;
-                    }
-                    break;
-                case WRQ:
-                    completed = pushByteUntilZero(nextByte);
-                    if (completed) {
-                        byte[] result = extractResult();
-                        reset();
-                        return result;
-                    }
-                    break;
-                case LOGRQ:
-                    completed = pushByteUntilZero(nextByte);
-                    if (completed) {
-                        byte[] result = extractResult();
-                        reset();
-                        return result;
-                    }
-                    break;
-                case DELRQ:
-                    completed = pushByteUntilZero(nextByte);
-                    if (completed) {
-                        byte[] result = extractResult();
-                        reset();
-                        return result;
-                    }
-                    break;
                 case DATA:
                     completed = pushByteUntilExpectedLength(nextByte);
                     if (completed) {
@@ -82,6 +51,23 @@ public class TftpEncoderDecoder implements MessageEncoderDecoder<Frame>{
                             return result;
                         }
                     }
+                    break;
+                case BCAST:
+                    completed = pushByteUntilZero(nextByte);
+                    if (completed) {
+                        byte[] result = extractResult();
+                        reset();
+                        return result;
+                    }
+                    break;
+                case ERROR:
+                    completed = pushByteUntilZero(nextByte);
+                    if (completed) {
+                        byte[] result = extractResult();
+                        reset();
+                        return result;
+                    }
+                    break;
             }
             return null;
         }

@@ -19,6 +19,14 @@ public class BCAST extends Frame {
         this.fileName = new String(bytes, 3, bytes.length - 3);
     }
 
+    public boolean isAdded() {
+        return added;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
     public byte[] toBytes() {
         byte[] opCodeBytes = ShortToTwoBytes(opCode);
         byte addedByte = (byte) (added ? 1 : 0);

@@ -40,10 +40,12 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
             connections.send(connectionId, error);
         }
 
-        if (!isLoggedIn() && frame.getCommand() != Frame.CommandTypes.LOGRQ) {
-            ERROR error = new ERROR((short) 6, "User not logged in");
-            connections.send(connectionId, error);
-            return;
+        if (frame.getCommand() != Frame.CommandTypes.DISC) {
+            if (!isLoggedIn() && frame.getCommand() != Frame.CommandTypes.LOGRQ ) {
+                ERROR error = new ERROR((short) 6, "User not logged in");
+                connections.send(connectionId, error);
+                return;
+            }
         }
       
         switch (frame.getCommand()) {
@@ -123,7 +125,6 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
         }
     }
 
-
     private void ACKprocess(ACK ackFrame) {
         if(ackFrame.getBlockNumber() == lastBlockNumSent) {
             System.out.println("ACK " + ackFrame.getBlockNumber());
@@ -138,12 +139,8 @@ public class TftpProtocol implements BidiMessagingProtocol<Frame>  {
             ERROR error = new ERROR((short) 0, "wrong block number in ACK frame");
             connections.send(connectionId, error);
         }
-
-                
-                
     }
         
-    
     private void WRQprocess(String fileName) {
         try {
             SharedResources.semaphore.acquire();
