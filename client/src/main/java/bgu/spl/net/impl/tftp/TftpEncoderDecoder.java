@@ -12,7 +12,7 @@ public class TftpEncoderDecoder implements MessageEncoderDecoder<Frame>{
     boolean completed = false;
     private int expectedLength = 0;
 
-    private byte[] decodeNextByte(byte nextByte) {
+    public byte[] decodeNextByte(byte nextByte) {
         //notice that the top 128 ascii characters have the same representation as their utf-8 counterparts
         //this allow us to do the following comparison
         if (command == null) { // still didn't get the opCode
