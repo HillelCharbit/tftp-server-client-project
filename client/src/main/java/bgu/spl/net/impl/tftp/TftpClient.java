@@ -6,17 +6,19 @@ import bgu.spl.net.api.MessagingProtocol;
 
 public class TftpClient {
     public static void main(String[] args) {
-        if (args.length < 3) {
-            System.out.println("Usage: TftpClient <host> <port> <filename>");
+
+        if (args.length == 0) {
+            args = new String[]{"localhost", "7777"};
+        }
+
+        if (args.length < 2) {
+            System.out.println("you must supply two arguments: host, message");
             System.exit(1);
         }
-        String host = args[0];
-        int port = Integer.parseInt(args[1]);
-
         Socket sock;
 
         try {
-            sock = new Socket(host, port);
+            sock = new Socket("localhost", 7777);
 
             MessagingProtocol<Frame> protocol = new TftpProtocol();
             

@@ -23,9 +23,10 @@ public class LOGRQ extends Frame {
     public byte[] toBytes() {
         byte[] opCodeBytes = ShortToTwoBytes(opCode);
         byte[] userNameBytes = userName.getBytes();
-        byte[] result = new byte[userNameBytes.length + 2];
+        byte[] result = new byte[userNameBytes.length + 3];
         System.arraycopy(opCodeBytes, 0, result, 0, 2);
         System.arraycopy(userNameBytes, 0, result, 2, userNameBytes.length);
+        result[result.length - 1] = 0;
         return result;
     }
     

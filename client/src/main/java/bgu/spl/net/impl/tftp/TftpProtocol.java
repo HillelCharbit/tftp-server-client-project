@@ -5,11 +5,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Queue;
-import java.util.concurrent.LinkedBlockingDeque;
 
 import bgu.spl.net.api.MessagingProtocol;
 import bgu.spl.net.impl.tftp.Frames.*;
@@ -19,12 +16,10 @@ public class TftpProtocol implements MessagingProtocol<Frame>  {
     
     private boolean shouldTerminate = false;
     private Queue<byte[]> dataBlocksToSend;
-    private ArrayList<byte[]> dataBlocksReceived;
+    private ArrayList<byte[]> dataBlocksReceived = new ArrayList<>();
     private short lastBlockNumSent;
     private Frame.CommandTypes lastCommandSent;
     private File processFile;
-
-    private TftpProtocolUtil util = new TftpProtocolUtil();
  
 
     @Override
@@ -56,6 +51,7 @@ public class TftpProtocol implements MessagingProtocol<Frame>  {
 
 
     private Frame ACKprocess(ACK ackFrame) {
+        System.out.println("ACK " + ackFrame.getBlockNumber());
         if (lastCommandSent == Frame.CommandTypes.WRQ) {
             readFile();
             return new DATA(++lastBlockNumSent, dataBlocksToSend.peek(), (short) dataBlocksToSend.peek().length);
@@ -141,6 +137,10 @@ public class TftpProtocol implements MessagingProtocol<Frame>  {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public void setLastCommandSent(Frame.CommandTypes lastCommandSent) {
+        this.lastCommandSent = lastCommandSent;
     }
 }
 

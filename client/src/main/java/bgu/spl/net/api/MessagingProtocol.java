@@ -1,5 +1,7 @@
 package bgu.spl.net.api;
 
+import bgu.spl.net.impl.tftp.Frame;
+
 public interface MessagingProtocol<T> {
  
     /**
@@ -13,5 +15,7 @@ public interface MessagingProtocol<T> {
      * @return true if the connection should be terminated
      */
     boolean shouldTerminate();
- 
+
+    void setLastCommandSent(Frame.CommandTypes command);
+
 }
