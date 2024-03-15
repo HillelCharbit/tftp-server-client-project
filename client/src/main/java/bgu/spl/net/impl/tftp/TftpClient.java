@@ -5,7 +5,6 @@ import java.net.Socket;
 import bgu.spl.net.api.MessagingProtocol;
 
 public class TftpClient {
-    //TODO: implement the main logic of the client, when using a thread per client the main logic goes here
     public static void main(String[] args) {
         if (args.length < 3) {
             System.out.println("Usage: TftpClient <host> <port> <filename>");

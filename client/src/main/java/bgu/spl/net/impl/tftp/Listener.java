@@ -4,15 +4,16 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
+import bgu.spl.net.api.MessagingProtocol;
 import bgu.spl.net.impl.tftp.Frames.*;
 
 public class Listener implements Runnable{
     Socket sock;
     TftpEncoderDecoder encdec;
-    TftpProtocol protocol;
+    MessagingProtocol<Frame> protocol;
     Keyboard keyboard;
     
-    public Listener(Socket sock, TftpProtocol protocol, Keyboard keyboard){
+    public Listener(Socket sock, MessagingProtocol<Frame> protocol, Keyboard keyboard){
         this.sock = sock;
         this.encdec = new TftpEncoderDecoder();
         this.protocol = protocol;
