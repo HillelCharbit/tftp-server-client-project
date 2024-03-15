@@ -2,20 +2,24 @@ package bgu.spl.net.impl.tftp;
 
 import java.net.Socket;
 
+import bgu.spl.net.api.MessagingProtocol;
+
 public class TftpClient {
     //TODO: implement the main logic of the client, when using a thread per client the main logic goes here
     public static void main(String[] args) {
-        if (args.length == 0) {
-            args = new String[]{"localhost", "7777"};
-        }
-
-        if (args.length < 2) {
-            System.out.println("you must supply two arguments: host, message");
+        if (args.length < 3) {
+            System.out.println("Usage: TftpClient <host> <port> <filename>");
             System.exit(1);
         }
-        try{
-            Socket sock = new Socket(args[0], Integer.parseInt(args[1]));
-            TftpProtocol protocol = new TftpProtocol();
+        String host = args[0];
+        int port = Integer.parseInt(args[1]);
+
+        Socket sock;
+
+        try {
+            sock = new Socket(host, port);
+
+            MessagingProtocol<Frame> protocol = new TftpProtocol();
             
             Keyboard keyboard = new Keyboard(sock, protocol);
             Listener listener = new Listener(sock, protocol, keyboard);
@@ -25,7 +29,10 @@ public class TftpClient {
             listenerThread.start();
             keyboardThread.start();
 
-        } catch (Exception ignored){
+            
         }
-    }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+}
 }
